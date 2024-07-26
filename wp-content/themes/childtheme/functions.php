@@ -56,6 +56,60 @@ if ($terms && !is_wp_error($terms)) {
 }
 
 
+add_action('wp_ajax_filter_locations', 'filter_locations');
+add_action('wp_ajax_nopriv_filter_locations', 'filter_locations');
+
+function filter_locations() {
+    $term_id = isset($_GET['term_id']) ? intval($_GET['term_id']) : 0;
+
+    $args = array(
+        'post_type' => 'location',
+        'posts_per_page' => -1,
+    );
+
+    if ($term_id && $term_id !== 'all') {
+        $args['tax_query'] = array(
+            array(
+                'taxonomy' => 'location_category',
+                'field'    => 'term_id',
+                'terms'    => $term_id,
+            ),
+        );
+    }
+
+    $query = new WP_Query($args);
+    $output = '';
+
+    if ($query->have_posts()) {
+        while ($query->have_posts()) {
+            $query->the_post();
+            $address = get_post_meta(get_the_ID(), 'address', true);
+            $icon = get_post_meta(get_the_ID(), 'icon_url', true);
+
+            $geocode_url = 'https://maps.googleapis.com/maps/api/geocode/json?address=' . urlencode($address) . '&key=AIzaSyA8ga5NZSYzrU2SnCqDssEB-kizBQzVipg';
+            $response = wp_remote_get($geocode_url);
+            $body = wp_remote_retrieve_body($response);
+            $data = json_decode($body);
+
+            if ($data->status === 'OK') {
+                $latitude = $data->results[0]->geometry->location->lat;
+                $longitude = $data->results[0]->geometry->location->lng;
+
+                $output .= '<button data-lat="' . esc_attr($latitude) . '" data-lng="' . esc_attr($longitude) . '" data-icon="' . esc_url($icon) . '">' . get_the_title() . '</button>';
+            } else {
+                $output .= '<button>' . get_the_title() . ' (Address not found)</button>';
+            }
+        }
+    } else {
+        $output = '<p>No locations found.</p>';
+    }
+
+    wp_reset_postdata();
+
+    echo $output;
+    wp_die();
+}
+
 
 
 function enqueue_custom_styles() {
@@ -103,3 +157,4 @@ function get_location_buttons() {
     
     return $output;
 }
+
